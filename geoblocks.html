@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GeoBlocks - GBA (NES)</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="website icon" type="png" href="img/TETR.png">
+<style>
+:root{--bg:#081018;--panel:#0f1724;--accent:#FFD27F;--muted:#9AA6B2;--text:#EAE6DA;}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; font-family:'Press Start 2P',monospace;
+  background:linear-gradient(180deg,#081018,#07101a);
+  color:var(--text);
+  display:flex; align-items:center; justify-content:center;
+  padding:18px;
+}
+.frame{width:min(760px,96vw);background:linear-gradient(180deg,#081827,#041018);border:4px solid #000;padding:12px;border-radius:6px;display:flex;gap:12px;align-items:flex-start}
+.left{width:54%}
+.right{width:46%;display:flex;flex-direction:column;gap:8px;align-items:center}
+.canvas{background:#081018;padding:8px;border:3px solid #000;border-radius:6px}
+canvas{background:#07101a; image-rendering:pixelated; display:block}
+.controls{display:flex;gap:8px}
+.btn{padding:8px 10px;background:#111;border:3px solid #000;color:var(--text);cursor:pointer;border-radius:6px;font-size:11px}
+.btn:hover{background:var(--accent);color:#000}
+.hud{font-size:12px;color:var(--text)}
+.scan{position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(0,0,0,0.03) 50%, transparent 51%);background-size:100% 4px;opacity:.35}
+.footer{position:fixed;left:12px;bottom:8px;color:var(--muted);font-size:11px}
+.credits{position:fixed;right:12px;bottom:8px;color:var(--muted);font-size:11px}
+@media(max-width:760px){ .frame{flex-direction:column} canvas{width:92vw;height:150vw} }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="left">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="color:var(--accent)">GBA — GeoBlocks</div>
+      <div class="controls">
+        <div class="btn" id="btnRestart">RIAVVIA</div>
+        <div class="btn" id="btnDifficulty">DIFFICOLTÀ</div>
+        <div class="btn" onclick="location.href='index.html'">MENU</div>
+      </div>
+    </div>
+    <div style="margin-top:12px" class="canvas">
+      <canvas id="tetris" width="240" height="400"></canvas>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="hud">Punteggio: <span id="gscore">0</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px">Controlli: frecce/WASD per ruotare. Su mobile usa i pulsanti touch o swipe (supporto base).</div>
+  </div>
+</div>
+
+<div class="scan"></div>
+<div class="footer">Versione Beta (1.0.0)</div>
+<div class="credits">Fatto da Anto e ChatGPT</div>
+
+<script>
+/* GeoBlocks (Tetris-like) core — simplified but complete */
+const canvas=document.getElementById('tetris'), ctx=canvas.getContext('2d');
+ctx.scale(20,20); // NES-like grid cell = 20px
+const COLS=12, ROWS=20;
+let arena, player, dropCounter=0, dropInterval=1000, lastTime=0, difficulty=1;
+const colors=['#000','#FFD27F','#74C2FF','#FFD3FF','#FF7B7B','#9BFF8A','#74B3FF','#DDDDDD'];
+
+function createMatrix(w,h){ const m=[]; while(h--) m.push(new Array(w).fill(0)); return m; }
+function createPiece(type){
+  if(type==='T') return [[0,1,0],[1,1,1],[0,0,0]];
+  if(type==='O') return [[2,2],[2,2]];
+  if(type==='L') return [[0,0,3],[3,3,3],[0,0,0]];
+  if(type==='J') return [[4,0,0],[4,4,4],[0,0,0]];
+  if(type==='I') return [[0,5,0,0],[0,5,0,0],[0,5,0,0],[0,5,0,0]];
+  if(type==='S') return [[0,6,6],[6,6,0],[0,0,0]];
+  if(type==='Z') return [[7,7,0],[0,7,7],[0,0,0]];
+}
+function randomPiece(){ const pieces='TJLOSZI'; return pieces[Math.floor(Math.random()*pieces.length)]; }
+function collide(arena,player){
+  const [m,o]=[player.matrix,player.pos];
+  for(let y=0;y<m.length;y++) for(let x=0;x<m[y].length;x++)
+    if(m[y][x]!==0 && (arena[y+o.y] && arena[y+o.y][x+o.x])!==0) return true;
+  return false;
+}
+function merge(arena,player){
+  player.matrix.forEach((row,y)=>row.forEach((v,x)=>{ if(v) arena[y+player.pos.y][x+player.pos.x]=v; }));
+}
+function arenaSweep(){
+  let rowCount=1;
+  for(let y=arena.length-1;y>=0;y--){
+    if(arena[y].every(v=>v!==0)){
+      arena.splice(y,1);
+      arena.unshift(new Array(COLS).fill(0));
+      player.score += rowCount * 10;
+      rowCount *= 2;
+      y++;
+      // immediate update
+      draw();
+      document.getElementById('gscore').textContent = player.score;
+    }
+  }
+}
+function playerReset(){
+  player.matrix = createPiece(randomPiece());
+  player.pos = {x: Math.floor(COLS/2) - Math.floor(player.matrix[0].length/2), y: 0};
+  if(collide(arena,player)){ arena = createMatrix(COLS,ROWS); player.score=0; document.getElementById('gscore').textContent = player.score; }
+}
+function playerDrop(){
+  player.pos.y++;
+  if(collide(arena,player)){
+    player.pos.y--;
+    merge(arena,player);
+    playerReset();
+    arenaSweep();
+  }
+  dropCounter=0;
+}
+function playerMove(dir){
+  player.pos.x += dir;
+  if(collide(arena,player)) player.pos.x -= dir;
+}
+function rotate(matrix,dir){
+  for(let y=0;y<matrix.length;y++) for(let x=0;x<y;x++) [matrix[x][y],matrix[y][x]]=[matrix[y][x],matrix[x][y]];
+  if(dir>0) matrix.forEach(r=>r.reverse()); else matrix.reverse();
+}
+function playerRotate(dir){
+  const pos = player.pos.x;
+  rotate(player.matrix,dir);
+  let offset = 1;
+  while(collide(arena,player)){
+    player.pos.x += offset;
+    offset = -(offset + (offset>0?1:-1));
+    if(offset > player.matrix[0].length){
+      rotate(player.matrix,-dir);
+      player.pos.x = pos;
+      return;
+    }
+  }
+}
+function drawMatrix(mat, offset){
+  mat.forEach((row,y)=>row.forEach((val,x)=>{
+    if(val!==0){
+      ctx.fillStyle = colors[val] || '#fff';
+      ctx.fillRect(x+offset.x, y+offset.y, 1, 1);
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 0.03; ctx.strokeRect(x+offset.x, y+offset.y, 1,1);
+    }
+  }));
+}
+function draw(){
+  ctx.fillStyle='#07101a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawMatrix(arena, {x:0,y:0});
+  drawMatrix(player.matrix, player.pos);
+  // hud on canvas (small)
+  ctx.fillStyle='#FFD27F'; ctx.font='0.4px "Press Start 2P"';
+  ctx.fillText('Score: '+player.score, 0.5, 0.6);
+}
+let last = 0;
+function update(time=0){
+  if(!last) last=time;
+  const delta = time - last;
+  last = time;
+  dropCounter += delta;
+  // difficulty scaling: difficulty 1..4 reduces interval by factor
+  const effective = dropInterval / difficulty;
+  if(dropCounter > effective) playerDrop();
+  draw();
+  requestAnimationFrame(update);
+}
+
+/* controls */
+document.addEventListener('keydown', e=>{
+  if(e.key === 'ArrowLeft') playerMove(-1);
+  if(e.key === 'ArrowRight') playerMove(1);
+  if(e.key === 'ArrowDown') playerDrop();
+  if(e.key === 'q') playerRotate(-1);
+  if(e.key === 'w') playerRotate(1);
+  if(e.key === 'p'){ // pause: open difficulty chooser prompt (non-blocking in UX)
+    const d = prompt('Cambia difficoltà: 1=Easy 2=Medium 3=Hard 4=Extreme', difficulty);
+    const v = parseInt(d);
+    if(v>=1 && v<=4){ difficulty = v; }
+  }
+});
+
+/* UI buttons */
+document.getElementById('btnRestart').addEventListener('click', ()=> {
+  arena = createMatrix(COLS,ROWS);
+  player.score = 0;
+  playerReset();
+  document.getElementById('gscore').textContent = player.score;
+});
+document.getElementById('btnDifficulty').addEventListener('click', ()=> {
+  const d = prompt('Scegli difficoltà: 1=Easy 2=Medium 3=Hard 4=Extreme', difficulty);
+  const v = parseInt(d);
+  if(v>=1 && v<=4){ difficulty = v; }
+});
+
+/* init */
+arena = createMatrix(COLS,ROWS);
+player = {pos:{x:0,y:0},matrix:null,score:0};
+playerReset();
+document.getElementById('gscore').textContent = player.score;
+update();
+</script>
+</body>
+</html>
