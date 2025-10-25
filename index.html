@@ -6,7 +6,23 @@
 <title>GBA - Games by Anto (NES Style)</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="website icon" type="png" href="img/logo.png">
+<link rel="manifest" href="manifest.json">
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js').catch(console.error);
+  }
+</script>
+
 <style>
+    html, body {
+  overflow: hidden;
+  height: 100%;
+  touch-action: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
 :root{
   --bg:#081018;
   --panel:#0f1724;

@@ -7,6 +7,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="website icon" type="png" href="img/SNAKE.png">
 <style>
+  html, body {
+  overflow: hidden;
+  height: 100%;
+  touch-action: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
 :root{--bg:#081018;--panel:#0f1724;--accent:#FFD27F;--muted:#9AA6B2;--text:#EAE6DA;}
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -156,6 +164,13 @@ document.addEventListener('keydown',e=>{
   if(e.key==='ArrowRight' && dir.x!==-1) dir={x:1,y:0};
   if(!running && !over){ startLoop(); }
 });
+document.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('touchstart', e => {
+    e.preventDefault(); // impedisce lo scroll
+    btn.click(); // esegue l’azione immediatamente
+  });
+});
+
 /* touch swipe */
 let sx=0, sy=0;
 canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; sx=t.clientX; sy=t.clientY; }, {passive:true});
